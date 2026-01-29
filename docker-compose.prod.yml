@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  db:
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/automotive_vest
+      - DEBUG=false
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    restart: always
+    environment:
+      - API_URL=http://api:8000
+      - ENVIRONMENT=production
+    depends_on:
+      - api
+
+  nginx:
+    image: nginx:alpine
+    container_name: automotive_vest_nginx
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - api
+    restart: always
+
+volumes:
+  postgres_data:
