@@ -29,19 +29,22 @@ jobs:
           SERVER_IP: ${{ secrets.SERVER_IP }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
         run: |
+          # Create temp directory on server
+          ssh ${SERVER_USER}@${SERVER_IP} "mkdir -p /tmp/frontend_update/pages"
+
           # Copy frontend files
           scp -r frontend/* ${SERVER_USER}@${SERVER_IP}:/tmp/frontend_update/
 
           # Copy to container and restart
           ssh ${SERVER_USER}@${SERVER_IP} << 'ENDSSH'
-            # Create temp directory
-            mkdir -p /tmp/frontend_update
-
             # Copy files to container
             docker cp /tmp/frontend_update/. automotive_vest_frontend:/app/frontend/
 
             # Restart frontend container
             docker restart automotive_vest_frontend
+
+            # Wait for container to start
+            sleep 5
 
             # Clean up
             rm -rf /tmp/frontend_update
