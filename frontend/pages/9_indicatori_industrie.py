@@ -1,5 +1,6 @@
 """
 Pagina Indicatori Industrie - Producție industrială și cifră de afaceri
+Design modern și profesionist
 """
 
 import streamlit as st
@@ -11,26 +12,44 @@ import sys
 if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from auth import require_auth, show_user_info
+from auth import require_auth
+from styles import (
+    init_page_style, page_header, section_header, chart_container,
+    chart_container_end, COLORS, get_plotly_layout_defaults, alert_box
+)
 
 st.set_page_config(page_title="Indicatori Industrie", page_icon="🏭", layout="wide")
 
 # Verifică autentificarea
 require_auth()
-show_user_info()
 
-st.title("🏭 Indicatori Industrie")
-st.markdown("Analiza indicilor de producție industrială și cifră de afaceri în Regiunea Vest")
+# Aplică stilurile moderne
+init_page_style(st)
+
+# Header pagină
+st.markdown(page_header(
+    "Indicatori Industrie",
+    "Analiza indicilor de producție industrială și cifră de afaceri în Regiunea Vest",
+    "🏭"
+), unsafe_allow_html=True)
 
 try:
     from db_utils import get_industry_indices, get_available_years
 
-    # Filtre
-    col1, col2 = st.columns([1, 3])
+    # Filtre în sidebar
+    with st.sidebar:
+        st.markdown("""
+        <div class="menu-group">
+            <div class="menu-group-title">🔧 Filtre</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    with col1:
         years = get_available_years()
-        selected_year = st.selectbox("Selectează anul", years if years else [2025, 2024, 2023])
+        selected_year = st.selectbox(
+            "📅 Selectează anul",
+            years if years else [2025, 2024, 2023],
+            key="industry_year_filter"
+        )
 
     # Obține datele
     df = get_industry_indices(selected_year)
@@ -48,18 +67,18 @@ try:
         # Cele mai recente date per județ
         df_latest = df_pivot.sort_values(['year', 'quarter'], ascending=False).groupby('county_name').first().reset_index()
 
-        st.markdown("---")
-
         # Info box
-        st.info("""
-        **Interpretare indicatori:**
-        - **Indice > 100**: Creștere față de perioada de referință
-        - **Indice = 100**: Fără modificare
-        - **Indice < 100**: Scădere față de perioada de referință
-        """)
+        st.markdown(alert_box(
+            """<strong>Interpretare indicatori:</strong><br>
+            • <strong>Indice > 100</strong>: Creștere față de perioada de referință<br>
+            • <strong>Indice = 100</strong>: Fără modificare<br>
+            • <strong>Indice < 100</strong>: Scădere față de perioada de referință""",
+            "info"
+        ), unsafe_allow_html=True)
 
-        # KPIs
-        st.subheader("📊 Situația Curentă")
+        # KPIs Section
+        st.markdown(section_header("Situația Curentă", "📊"), unsafe_allow_html=True)
+
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
         with kpi1:
@@ -84,18 +103,19 @@ try:
                 best_turn = df_latest.loc[df_latest['IND_TURNOVER_INDEX'].idxmax()]
                 st.metric("Lider Cifră Afaceri", f"{best_turn['IND_TURNOVER_INDEX']:.1f}", f"{best_turn['county_name']}")
 
-        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
 
         # Grafice principale
+        st.markdown(section_header("Comparație Indici", "📈"), unsafe_allow_html=True)
+
         chart1, chart2 = st.columns(2)
 
         with chart1:
-            st.subheader("📈 Indicele Producției Industriale")
+            st.markdown(chart_container("Indicele Producției Industriale", "📈"), unsafe_allow_html=True)
 
             if 'IND_PROD_INDEX' in df_latest.columns:
                 df_sorted = df_latest.sort_values('IND_PROD_INDEX', ascending=True)
-
-                colors = ['#E63946' if x < 100 else '#4CAF50' for x in df_sorted['IND_PROD_INDEX']]
+                colors = [COLORS['error'] if x < 100 else COLORS['secondary'] for x in df_sorted['IND_PROD_INDEX']]
 
                 fig = go.Figure(go.Bar(
                     x=df_sorted['IND_PROD_INDEX'],
@@ -108,21 +128,24 @@ try:
 
                 fig.add_vline(x=100, line_dash="dash", line_color="gray", annotation_text="Referință (100)")
 
+                layout_defaults = get_plotly_layout_defaults()
                 fig.update_layout(
                     xaxis_title="Indice",
                     yaxis_title="",
-                    height=350
+                    height=350,
+                    **layout_defaults
                 )
 
                 st.plotly_chart(fig, use_container_width=True)
 
+            st.markdown(chart_container_end(), unsafe_allow_html=True)
+
         with chart2:
-            st.subheader("💰 Indicele Cifrei de Afaceri")
+            st.markdown(chart_container("Indicele Cifrei de Afaceri", "💰"), unsafe_allow_html=True)
 
             if 'IND_TURNOVER_INDEX' in df_latest.columns:
                 df_sorted = df_latest.sort_values('IND_TURNOVER_INDEX', ascending=True)
-
-                colors = ['#E63946' if x < 100 else '#4CAF50' for x in df_sorted['IND_TURNOVER_INDEX']]
+                colors = [COLORS['error'] if x < 100 else COLORS['secondary'] for x in df_sorted['IND_TURNOVER_INDEX']]
 
                 fig2 = go.Figure(go.Bar(
                     x=df_sorted['IND_TURNOVER_INDEX'],
@@ -135,47 +158,62 @@ try:
 
                 fig2.add_vline(x=100, line_dash="dash", line_color="gray", annotation_text="Referință (100)")
 
+                layout_defaults = get_plotly_layout_defaults()
                 fig2.update_layout(
                     xaxis_title="Indice",
                     yaxis_title="",
-                    height=350
+                    height=350,
+                    **layout_defaults
                 )
 
                 st.plotly_chart(fig2, use_container_width=True)
 
-        st.markdown("---")
+            st.markdown(chart_container_end(), unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
 
         # Radar chart pentru comparație
-        st.subheader("🎯 Comparație Județe")
+        st.markdown(section_header("Comparație Județe", "🎯"), unsafe_allow_html=True)
 
         if 'IND_PROD_INDEX' in df_latest.columns and 'IND_TURNOVER_INDEX' in df_latest.columns:
+            st.markdown(chart_container("Radar - Producție vs Cifră Afaceri", "🎯"), unsafe_allow_html=True)
+
+            color_sequence = [COLORS['primary'], COLORS['primary_light'], COLORS['secondary'], COLORS['accent']]
+
             fig3 = go.Figure()
 
-            for _, row in df_latest.iterrows():
+            for idx, (_, row) in enumerate(df_latest.iterrows()):
                 fig3.add_trace(go.Scatterpolar(
                     r=[row['IND_PROD_INDEX'], row['IND_TURNOVER_INDEX'], row['IND_PROD_INDEX']],
                     theta=['Producție', 'Cifră Afaceri', 'Producție'],
                     fill='toself',
-                    name=row['county_name']
+                    name=row['county_name'],
+                    line=dict(color=color_sequence[idx % len(color_sequence)])
                 ))
 
             fig3.update_layout(
                 polar=dict(radialaxis=dict(visible=True, range=[50, 130])),
                 height=450,
-                legend=dict(orientation="h", yanchor="bottom", y=-0.2)
+                legend=dict(orientation="h", yanchor="bottom", y=-0.15, xanchor="center", x=0.5),
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(family="Inter, sans-serif")
             )
 
             st.plotly_chart(fig3, use_container_width=True)
+            st.markdown(chart_container_end(), unsafe_allow_html=True)
 
-        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
 
         # Evoluție în timp
-        st.subheader("📈 Evoluție Trimestrială")
+        st.markdown(section_header("Evoluție Trimestrială", "📈"), unsafe_allow_html=True)
 
         df_evolution = df_pivot.sort_values(['year', 'quarter'])
         df_evolution['period'] = df_evolution['year'].astype(str) + ' T' + df_evolution['quarter'].astype(str)
 
-        tab1, tab2 = st.tabs(["Producție Industrială", "Cifra de Afaceri"])
+        tab1, tab2 = st.tabs(["📈 Producție Industrială", "💰 Cifra de Afaceri"])
+
+        layout_defaults = get_plotly_layout_defaults()
+        color_sequence = [COLORS['primary'], COLORS['primary_light'], COLORS['secondary'], COLORS['accent']]
 
         with tab1:
             if 'IND_PROD_INDEX' in df_evolution.columns:
@@ -184,14 +222,16 @@ try:
                     x='period',
                     y='IND_PROD_INDEX',
                     color='county_name',
-                    markers=True
+                    markers=True,
+                    color_discrete_sequence=color_sequence
                 )
                 fig4.add_hline(y=100, line_dash="dash", line_color="gray")
                 fig4.update_layout(
                     xaxis_title="Perioadă",
                     yaxis_title="Indice Producție",
                     height=400,
-                    legend_title="Județ"
+                    legend_title="Județ",
+                    **layout_defaults
                 )
                 st.plotly_chart(fig4, use_container_width=True)
 
@@ -202,21 +242,23 @@ try:
                     x='period',
                     y='IND_TURNOVER_INDEX',
                     color='county_name',
-                    markers=True
+                    markers=True,
+                    color_discrete_sequence=color_sequence
                 )
                 fig5.add_hline(y=100, line_dash="dash", line_color="gray")
                 fig5.update_layout(
                     xaxis_title="Perioadă",
                     yaxis_title="Indice CA",
                     height=400,
-                    legend_title="Județ"
+                    legend_title="Județ",
+                    **layout_defaults
                 )
                 st.plotly_chart(fig5, use_container_width=True)
 
-        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
 
         # Tabel detaliat
-        st.subheader("📋 Date Detaliate")
+        st.markdown(section_header("Date Detaliate", "📋"), unsafe_allow_html=True)
 
         df_display = df_pivot.copy()
         col_rename = {
@@ -235,14 +277,24 @@ try:
         st.dataframe(df_display, use_container_width=True, hide_index=True)
 
         # Download
-        csv = df_pivot.to_csv(index=False)
-        st.download_button(
-            label="📥 Descarcă CSV",
-            data=csv,
-            file_name=f"indicatori_industrie_{selected_year}.csv",
-            mime="text/csv"
-        )
+        col_dl1, col_dl2, col_dl3 = st.columns([1, 1, 2])
+        with col_dl1:
+            csv = df_pivot.to_csv(index=False)
+            st.download_button(
+                label="📥 Descarcă CSV",
+                data=csv,
+                file_name=f"indicatori_industrie_{selected_year}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
 
 except Exception as e:
     st.error(f"Eroare la încărcarea datelor: {str(e)}")
     st.info("Asigurați-vă că baza de date este configurată corect și conține date.")
+
+# Footer
+st.markdown(f"""
+<div class="app-footer">
+    <p style="margin: 0;">© 2025 Vest Policy Lab - Automotive Vest Analytics</p>
+</div>
+""", unsafe_allow_html=True)

@@ -1,5 +1,6 @@
 """
 Pagina Salarii Regionale - Comparație salarii brute/nete pe județe
+Design modern și profesionist
 """
 
 import streamlit as st
@@ -11,26 +12,44 @@ import sys
 if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from auth import require_auth, show_user_info
+from auth import require_auth
+from styles import (
+    init_page_style, page_header, section_header, chart_container,
+    chart_container_end, COLORS, get_plotly_layout_defaults
+)
 
 st.set_page_config(page_title="Salarii Regionale", page_icon="💰", layout="wide")
 
 # Verifică autentificarea
 require_auth()
-show_user_info()
 
-st.title("💰 Salarii Regionale")
-st.markdown("Comparație câștiguri salariale medii brute și nete în Regiunea Vest")
+# Aplică stilurile moderne
+init_page_style(st)
+
+# Header pagină
+st.markdown(page_header(
+    "Salarii Regionale",
+    "Comparație câștiguri salariale medii brute și nete în Regiunea Vest",
+    "💰"
+), unsafe_allow_html=True)
 
 try:
     from db_utils import get_salary_comparison, get_available_years
 
-    # Filtre
-    col1, col2 = st.columns([1, 3])
+    # Filtre în sidebar
+    with st.sidebar:
+        st.markdown("""
+        <div class="menu-group">
+            <div class="menu-group-title">🔧 Filtre</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    with col1:
         years = get_available_years()
-        selected_year = st.selectbox("Selectează anul", years if years else [2025, 2024, 2023])
+        selected_year = st.selectbox(
+            "📅 Selectează anul",
+            years if years else [2025, 2024, 2023],
+            key="salary_year_filter"
+        )
 
     # Obține datele
     df = get_salary_comparison(selected_year)
@@ -48,10 +67,9 @@ try:
         # Cele mai recente date per județ
         df_latest = df_pivot.sort_values(['year', 'quarter'], ascending=False).groupby('county_name').first().reset_index()
 
-        st.markdown("---")
+        # KPIs Section
+        st.markdown(section_header("Statistici Generale", "📊"), unsafe_allow_html=True)
 
-        # KPIs
-        st.subheader("📊 Statistici Generale")
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
         with kpi1:
@@ -74,13 +92,15 @@ try:
                 min_gross = df_latest.loc[df_latest['AVG_GROSS_SALARY'].idxmin()]
                 st.metric("Cel mai mic salariu brut", f"{min_gross['AVG_GROSS_SALARY']:,.0f} RON", f"{min_gross['county_name']}")
 
-        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
 
         # Grafice
+        st.markdown(section_header("Analiză Grafică", "📈"), unsafe_allow_html=True)
+
         chart1, chart2 = st.columns(2)
 
         with chart1:
-            st.subheader("💵 Comparație Salarii pe Județe")
+            st.markdown(chart_container("Comparație Salarii pe Județe", "💵"), unsafe_allow_html=True)
 
             if 'AVG_GROSS_SALARY' in df_latest.columns and 'AVG_NET_SALARY' in df_latest.columns:
                 fig = go.Figure()
@@ -89,7 +109,7 @@ try:
                     name='Salariu Brut',
                     x=df_latest['county_name'],
                     y=df_latest['AVG_GROSS_SALARY'],
-                    marker_color='#1E3A5F',
+                    marker_color=COLORS['primary'],
                     text=df_latest['AVG_GROSS_SALARY'].apply(lambda x: f'{x:,.0f}'),
                     textposition='outside'
                 ))
@@ -98,23 +118,27 @@ try:
                     name='Salariu Net',
                     x=df_latest['county_name'],
                     y=df_latest['AVG_NET_SALARY'],
-                    marker_color='#4CAF50',
+                    marker_color=COLORS['secondary'],
                     text=df_latest['AVG_NET_SALARY'].apply(lambda x: f'{x:,.0f}'),
                     textposition='outside'
                 ))
 
+                layout_defaults = get_plotly_layout_defaults()
                 fig.update_layout(
                     barmode='group',
                     xaxis_title="Județ",
                     yaxis_title="RON",
-                    height=400,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02)
+                    height=380,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    **layout_defaults
                 )
 
                 st.plotly_chart(fig, use_container_width=True)
 
+            st.markdown(chart_container_end(), unsafe_allow_html=True)
+
         with chart2:
-            st.subheader("📈 Evoluție Trimestrială")
+            st.markdown(chart_container("Evoluție Trimestrială", "📈"), unsafe_allow_html=True)
 
             # Evoluție în timp
             df_evolution = df_pivot.sort_values(['year', 'quarter'])
@@ -127,22 +151,26 @@ try:
                     y='AVG_GROSS_SALARY',
                     color='county_name',
                     markers=True,
-                    title='Evoluție Salariu Brut'
+                    color_discrete_sequence=[COLORS['primary'], COLORS['primary_light'], COLORS['secondary'], COLORS['accent']]
                 )
 
+                layout_defaults = get_plotly_layout_defaults()
                 fig2.update_layout(
                     xaxis_title="Perioadă",
                     yaxis_title="RON",
-                    height=400,
-                    legend_title="Județ"
+                    height=380,
+                    legend_title="Județ",
+                    **layout_defaults
                 )
 
                 st.plotly_chart(fig2, use_container_width=True)
 
-        st.markdown("---")
+            st.markdown(chart_container_end(), unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
 
         # Tabel detaliat
-        st.subheader("📋 Date Detaliate")
+        st.markdown(section_header("Date Detaliate", "📋"), unsafe_allow_html=True)
 
         df_display = df_pivot.copy()
         df_display.columns = ['Județ', 'Cod', 'An', 'Trimestru', 'Salariu Brut (RON)', 'Salariu Net (RON)']
@@ -155,14 +183,24 @@ try:
         st.dataframe(df_display, use_container_width=True, hide_index=True)
 
         # Download
-        csv = df_pivot.to_csv(index=False)
-        st.download_button(
-            label="📥 Descarcă CSV",
-            data=csv,
-            file_name=f"salarii_regionale_{selected_year}.csv",
-            mime="text/csv"
-        )
+        col_dl1, col_dl2, col_dl3 = st.columns([1, 1, 2])
+        with col_dl1:
+            csv = df_pivot.to_csv(index=False)
+            st.download_button(
+                label="📥 Descarcă CSV",
+                data=csv,
+                file_name=f"salarii_regionale_{selected_year}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
 
 except Exception as e:
     st.error(f"Eroare la încărcarea datelor: {str(e)}")
     st.info("Asigurați-vă că baza de date este configurată corect și conține date.")
+
+# Footer
+st.markdown(f"""
+<div class="app-footer">
+    <p style="margin: 0;">© 2025 Vest Policy Lab - Automotive Vest Analytics</p>
+</div>
+""", unsafe_allow_html=True)
