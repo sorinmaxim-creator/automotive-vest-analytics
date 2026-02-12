@@ -11,16 +11,23 @@ import sys
 if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from auth import require_auth, show_user_info
+from auth import require_auth
+from styles import init_page_style, page_header, section_header, COLORS
 
 st.set_page_config(page_title="Rapoarte", page_icon="📄", layout="wide")
 
 # Verifică autentificarea
 require_auth()
-show_user_info()
 
-st.title("📄 Rapoarte și Export")
-st.markdown("Generare rapoarte și export date")
+# Aplică stilurile moderne
+init_page_style(st)
+
+# Header pagină
+st.markdown(page_header(
+    "Rapoarte și Export",
+    "Generare rapoarte și export date",
+    "📄"
+), unsafe_allow_html=True)
 
 # Tabs
 tab1, tab2, tab3 = st.tabs(["📊 Generare Raport", "📥 Export Date", "📋 Rapoarte Salvate"])
@@ -119,16 +126,17 @@ with tab1:
 
     with col_btn1:
         if st.button("📄 Generează PDF", type="primary", use_container_width=True):
-            with st.spinner("Se generează raportul PDF..."):
-                import time
-                time.sleep(2)
-                st.success("Raport PDF generat cu succes!")
-                st.download_button(
-                    "⬇️ Descarcă PDF",
-                    data=b"PDF content placeholder",
-                    file_name=f"raport_automotive_{year}.pdf",
-                    mime="application/pdf"
-                )
+            st.session_state["report_pdf_generated"] = True
+
+        if st.session_state.get("report_pdf_generated", False):
+            st.success("Raport PDF generat cu succes!")
+            st.download_button(
+                "⬇️ Descarcă PDF",
+                data=b"PDF content placeholder",
+                file_name=f"raport_automotive_{year}.pdf",
+                mime="application/pdf",
+                key="download_pdf_report"
+            )
 
     with col_btn2:
         if st.button("📊 Generează DOCX", use_container_width=True):
@@ -179,6 +187,9 @@ with tab2:
 
     # Generare date pentru export
     if st.button("Pregătește datele pentru export"):
+        st.session_state["export_prepared"] = True
+
+    if st.session_state.get("export_prepared", False):
         # Sample data
         years = list(range(export_years[0], export_years[1] + 1))
 
@@ -219,7 +230,8 @@ with tab2:
                 "⬇️ Descarcă Excel",
                 data=buffer,
                 file_name=f"automotive_vest_{export_years[0]}_{export_years[1]}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="export_excel_btn"
             )
 
         with col2:
@@ -229,7 +241,8 @@ with tab2:
                 "⬇️ Descarcă CSV",
                 data=csv_data,
                 file_name=f"automotive_vest_{export_years[0]}_{export_years[1]}.csv",
-                mime="text/csv"
+                mime="text/csv",
+                key="export_csv_btn"
             )
 
         with col3:
@@ -239,7 +252,8 @@ with tab2:
                 "⬇️ Descarcă JSON",
                 data=json_data,
                 file_name=f"automotive_vest_{export_years[0]}_{export_years[1]}.json",
-                mime="application/json"
+                mime="application/json",
+                key="export_json_btn"
             )
 
 with tab3:
@@ -303,3 +317,10 @@ with tab3:
 
         if st.button("Salvează programare"):
             st.success(f"Raport programat: {auto_type} - {frequency}")
+
+# Footer
+st.markdown("""
+<div class="app-footer">
+    <p style="margin: 0;">© 2025 Vest Policy Lab - Automotive Vest Analytics</p>
+</div>
+""", unsafe_allow_html=True)

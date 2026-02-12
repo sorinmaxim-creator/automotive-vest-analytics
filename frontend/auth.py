@@ -4,17 +4,24 @@ Suportă atât dicționar local cât și baza de date
 """
 
 import streamlit as st
-import hashlib
+import bcrypt
 import os
 from datetime import datetime
 
-# Configurare utilizatori fallback (când baza de date nu e disponibilă)
+# Configurare utilizatori din variabile de mediu
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "sorin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "vestpolicylab17@")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "sorin@vestpolicylab.org")
+
+# Utilizatori fallback (când baza de date nu e disponibilă)
+# Parolele în acest dicționar ar trebui să fie de asemenea hash-uite dacă sunt stocate permanent, 
+# dar aici le calculăm la runtime din variabile de mediu pentru securitate.
 USERS = {
-    "sorin": {
-        "password_hash": hashlib.sha256("vestpolicylab17@".encode()).hexdigest(),
+    ADMIN_USERNAME: {
+        "password_hash": None, # Va fi populat la nevoie sau verificat direct
         "name": "Sorin Maxim",
         "role": "admin",
-        "email": "sorin@vestpolicylab.org"
+        "email": ADMIN_EMAIL
     }
 }
 
@@ -47,7 +54,7 @@ def _init_users_table():
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
-                password_hash VARCHAR(64) NOT NULL,
+                password_hash VARCHAR(128) NOT NULL,
                 name VARCHAR(100) NOT NULL,
                 email VARCHAR(100),
                 role VARCHAR(20) DEFAULT 'viewer',
@@ -84,8 +91,9 @@ def _init_users_table():
         return False
 
 def hash_password(password: str) -> str:
-    """Generează hash SHA256 pentru parolă"""
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Generează hash Bcrypt pentru parolă"""
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode(), salt).decode('utf-8')
 
 def verify_password(username: str, password: str) -> bool:
     """Verifică dacă parola este corectă"""
@@ -106,17 +114,28 @@ def verify_password(username: str, password: str) -> bool:
                 stored_hash, is_active = result
                 if not is_active:
                     return False
-                return stored_hash == hash_password(password)
+                # Verificare hash cu bcrypt
+                try:
+                    return bcrypt.checkpw(password.encode(), stored_hash.encode())
+                except ValueError:
+                    # Fallback în caz că hash-ul vechi e SHA256 (pentru migrare)
+                    import hashlib
+                    old_hash = hashlib.sha256(password.encode()).hexdigest()
+                    if stored_hash == old_hash:
+                        # Re-hash cu bcrypt pentru viitor
+                        # update_password_hash(username, password)
+                        return True
+                    return False
             return False
         except Exception as e:
             print(f"Eroare verificare parolă DB: {e}")
             # Fallback la dicționar
             pass
 
-    # Fallback: verifică în dicționar
-    if username not in USERS:
-        return False
-    return USERS[username]["password_hash"] == hash_password(password)
+    # Fallback: verifică direct cu parola din variabile de mediu
+    if username == ADMIN_USERNAME and ADMIN_PASSWORD:
+        return password == ADMIN_PASSWORD
+    return False
 
 def get_user_info(username: str) -> dict:
     """Returnează informațiile utilizatorului"""
@@ -170,34 +189,96 @@ def update_last_login(username: str):
         except Exception:
             pass
 
+def register_user(username: str, password: str, name: str, email: str = "") -> tuple:
+    """Înregistrează un utilizator nou. Returnează (succes, mesaj)."""
+    # Validări
+    if not username or len(username) < 3:
+        return False, "Username-ul trebuie să aibă minim 3 caractere"
+    if ' ' in username:
+        return False, "Username-ul nu poate conține spații"
+    if not password or len(password) < 8:
+        return False, "Parola trebuie să aibă minim 8 caractere"
+    if not name:
+        return False, "Numele complet este obligatoriu"
+
+    conn = _get_db_connection()
+    if not conn:
+        return False, "Înregistrarea nu este disponibilă momentan (baza de date indisponibilă)"
+
+    try:
+        cur = conn.cursor()
+
+        # Verifică dacă username-ul există deja
+        cur.execute("SELECT COUNT(*) FROM users WHERE username = %s", (username,))
+        if cur.fetchone()[0] > 0:
+            cur.close()
+            conn.close()
+            return False, "Acest username este deja folosit"
+
+        # Inserează utilizatorul nou cu rol viewer
+        cur.execute("""
+            INSERT INTO users (username, password_hash, name, email, role, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (username, hash_password(password), name, email, 'viewer', 'self-register'))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True, "Cont creat cu succes! Te poți autentifica acum."
+    except Exception as e:
+        print(f"Eroare înregistrare utilizator: {e}")
+        return False, "Eroare la crearea contului. Încearcă din nou."
+
+
 def login_form():
-    """Afișează formularul de login"""
+    """Afișează formularul de login cu două secțiuni: Autentificare și Înregistrare"""
     st.markdown("""
     <style>
-    .login-container {
-        max-width: 400px;
-        margin: 0 auto;
-        padding: 2rem;
-        background: #f8f9fa;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    .auth-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        border: 1px solid #e2e8f0;
+        height: 100%;
+    }
+    .auth-card-login {
+        border-top: 4px solid #1a365d;
+    }
+    .auth-card-register {
+        border-top: 4px solid #38a169;
+    }
+    .auth-card-title {
+        font-size: 1.3rem;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+    }
+    .auth-card-title-login { color: #1a365d; }
+    .auth-card-title-register { color: #38a169; }
+    .auth-card-desc {
+        color: #718096;
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
     }
     </style>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col_login, col_sep, col_register = st.columns([5, 1, 5])
 
-    with col2:
-        st.markdown("### 🔐 Autentificare")
-        st.markdown("---")
+    # ── Coloana stânga: AM DEJA CONT ──
+    with col_login:
+        st.markdown("""
+        <div class="auth-card auth-card-login">
+            <div class="auth-card-title auth-card-title-login">🔐 Am deja cont</div>
+            <div class="auth-card-desc">Introdu datele tale de autentificare</div>
+        </div>
+        """, unsafe_allow_html=True)
 
         with st.form("login_form"):
             username = st.text_input("👤 Utilizator", placeholder="Introdu numele de utilizator")
             password = st.text_input("🔑 Parolă", type="password", placeholder="Introdu parola")
 
-            col_btn1, col_btn2 = st.columns(2)
-            with col_btn1:
-                submit = st.form_submit_button("🔓 Autentificare", type="primary", use_container_width=True)
+            submit = st.form_submit_button("🔓 Autentificare", type="primary", use_container_width=True)
 
             if submit:
                 if username and password:
@@ -212,8 +293,64 @@ def login_form():
                 else:
                     st.warning("⚠️ Completează toate câmpurile!")
 
-        st.markdown("---")
-        st.caption("© 2025 Vest Policy Lab - Regiunea Vest Analytics")
+    # ── Separator vizual ──
+    with col_sep:
+        st.markdown("""
+        <div style="display: flex; flex-direction: column; align-items: center;
+                    justify-content: center; height: 100%; min-height: 300px;">
+            <div style="width: 2px; flex: 1; background: linear-gradient(to bottom, transparent, #cbd5e0, transparent);"></div>
+            <div style="padding: 0.75rem 0; color: #a0aec0; font-weight: 600; font-size: 0.85rem;">SAU</div>
+            <div style="width: 2px; flex: 1; background: linear-gradient(to bottom, transparent, #cbd5e0, transparent);"></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── Coloana dreapta: SUNT UTILIZATOR NOU ──
+    with col_register:
+        st.markdown("""
+        <div class="auth-card auth-card-register">
+            <div class="auth-card-title auth-card-title-register">📝 Sunt utilizator nou</div>
+            <div class="auth-card-desc">Creează-ți un cont gratuit (doar vizualizare)</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        with st.form("register_form"):
+            reg_username = st.text_input(
+                "👤 Username",
+                placeholder="Alege un username (min. 3 caractere)"
+            )
+            reg_name = st.text_input(
+                "📛 Nume Complet",
+                placeholder="Ex: Ion Popescu"
+            )
+            reg_email = st.text_input(
+                "📧 Email (opțional)",
+                placeholder="Ex: ion.popescu@example.com"
+            )
+            reg_password = st.text_input(
+                "🔑 Parolă",
+                type="password",
+                placeholder="Minim 8 caractere"
+            )
+            reg_confirm = st.text_input(
+                "🔑 Confirmă Parola",
+                type="password",
+                placeholder="Repetă parola"
+            )
+
+            submit_reg = st.form_submit_button("📝 Creează Cont", type="primary", use_container_width=True)
+
+            if submit_reg:
+                if reg_password != reg_confirm:
+                    st.error("❌ Parolele nu coincid!")
+                else:
+                    success, message = register_user(reg_username, reg_password, reg_name, reg_email)
+                    if success:
+                        st.success(f"✅ {message}")
+                    else:
+                        st.error(f"❌ {message}")
+
+    st.markdown("---")
+    st.caption("© 2025 Vest Policy Lab - Regiunea Vest Analytics")
 
 def logout():
     """Deconectare utilizator"""

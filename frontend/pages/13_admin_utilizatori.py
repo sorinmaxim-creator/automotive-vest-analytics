@@ -5,26 +5,32 @@ Gestionare conturi, roluri și permisiuni
 
 import streamlit as st
 import pandas as pd
-import hashlib
 from datetime import datetime
 import os
 import sys
 if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from auth import require_auth, show_user_info, require_role, get_current_user
+from auth import require_auth, require_role, get_current_user, hash_password
+from styles import init_page_style, page_header, section_header, COLORS
 
 st.set_page_config(page_title="Administrare Utilizatori", page_icon="👥", layout="wide")
 
 # Verifică autentificarea
 require_auth()
-show_user_info()
 
 # Verifică dacă utilizatorul este admin
 require_role("admin")
 
-st.title("👥 Administrare Utilizatori")
-st.markdown("Gestionează conturile de utilizator, rolurile și permisiunile")
+# Aplică stilurile moderne
+init_page_style(st)
+
+# Header pagină
+st.markdown(page_header(
+    "Administrare Utilizatori",
+    "Gestionează conturile de utilizator, rolurile și permisiunile",
+    "👥"
+), unsafe_allow_html=True)
 
 # Conectare la baza de date
 try:
@@ -32,10 +38,6 @@ try:
     USE_DATABASE = True
 except ImportError:
     USE_DATABASE = False
-
-def hash_password(password: str) -> str:
-    """Generează hash SHA256 pentru parolă"""
-    return hashlib.sha256(password.encode()).hexdigest()
 
 def init_users_table():
     """Inițializează tabelul de utilizatori în baza de date"""
@@ -51,7 +53,7 @@ def init_users_table():
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
-                password_hash VARCHAR(64) NOT NULL,
+                password_hash VARCHAR(128) NOT NULL,
                 name VARCHAR(100) NOT NULL,
                 email VARCHAR(100),
                 role VARCHAR(20) DEFAULT 'viewer',
@@ -538,9 +540,19 @@ with tab3:
         st.markdown("### Acțiuni Rapide")
 
         if st.button("🔒 Dezactivează toți utilizatorii (excl. admini)", use_container_width=True):
+            st.session_state["confirm_deactivate_all"] = True
+
+        if st.session_state.get("confirm_deactivate_all", False):
             st.warning("Această acțiune va dezactiva toți utilizatorii care nu sunt administratori.")
-            if st.button("Confirmă dezactivarea", key="confirm_deactivate_all"):
-                st.info("Funcționalitate în dezvoltare")
+            col_da, col_nu = st.columns(2)
+            with col_da:
+                if st.button("✅ Confirmă dezactivarea", key="confirm_deactivate_yes"):
+                    st.info("Funcționalitate în dezvoltare")
+                    st.session_state["confirm_deactivate_all"] = False
+            with col_nu:
+                if st.button("❌ Anulează", key="confirm_deactivate_no"):
+                    st.session_state["confirm_deactivate_all"] = False
+                    st.rerun()
 
         if st.button("📧 Trimite email resetare parolă tuturor", use_container_width=True):
             st.info("Funcționalitate în dezvoltare - necesită configurare SMTP")

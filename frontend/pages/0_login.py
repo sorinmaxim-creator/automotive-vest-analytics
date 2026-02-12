@@ -10,7 +10,7 @@ if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
 
 from auth import login_form, is_authenticated, logout
 
-st.set_page_config(page_title="Login", page_icon="🔐", layout="centered")
+st.set_page_config(page_title="Login", page_icon="🔐", layout="wide")
 
 if is_authenticated():
     st.title("✅ Ești deja autentificat")
